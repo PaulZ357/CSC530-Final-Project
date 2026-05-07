@@ -26,7 +26,7 @@ void showUnlockSymbol();
 void playTone(int, int);
 void incorrect();
 
-void setup() {
+/*void setup() {
   pinMode(speakerPin, OUTPUT);
   readSD();
 }
@@ -38,7 +38,7 @@ void loop() {
   delay(1000);
   showUnlockSymbol();
   delay(1000);
-}
+}*/
 
 void playTone(int tone, int duration) {
   for (long i = 0; i < duration * 1000L; i += tone * 2) {
@@ -187,6 +187,59 @@ char readIRDigit() {
   // replace with your IR remote code
   // return '0' to '9' when pressed
   // return '\0' if nothing pressed
+  if (IrReceiver.decode()) {
+      uint32_t code = IrReceiver.decodedIRData.decodedRawData;
+      Serial.print("Code: ");
+      Serial.println(code, HEX);
+      // Example mapping for common remotes
+      int pressedDigit;
+      switch(code) {
+          case 0xE916FF00:
+              Serial.println("0 pressed");
+              pressedDigit = '0';
+              break;
+          case 0xF30CFF00:
+              Serial.println("1 pressed");
+              pressedDigit = '1';
+              break;
+          case 0xE718FF00:
+              Serial.println("2 pressed");
+              pressedDigit = '2';
+              break;
+          case 0xA15EFF00:
+              Serial.println("3 pressed");
+              pressedDigit = '3';
+              break;
+          case 0xF708FF00:
+              Serial.println("4 pressed");
+              pressedDigit = '4';
+              break;
+          case 0xE31CFF00:
+              Serial.println("5 pressed");
+              pressedDigit = '5';
+              break;
+          case 0xA55AFF00:
+              Serial.println("6 pressed");
+              pressedDigit = '6';
+              break;
+          case 0xBD42FF00:
+              Serial.println("7 pressed");
+              pressedDigit = '7';
+              break;
+          case 0xAD52FF00:
+              Serial.println("8 pressed");
+              pressedDigit = '8';
+              break;
+          case 0xB54AFF00:
+              Serial.println("9 pressed");
+              pressedDigit = '9';
+              break;
+          default:
+              pressedDigit = '\0';
+      }
+      IrReceiver.resume();
+      return pressedDigit;
+  }
   return '\0';
 }
 
@@ -200,8 +253,16 @@ String runVoiceInference(float &confidence) {
 
 // ---------- MAIN LOGIC ----------
 
+const byte IR_RECEIVE_PIN = A0;
+
 void setup() {
   Serial.begin(115200);
+  Serial.println("Initializing");
+  while (!Serial.available())
+  {
+      delay(10); // wait for serial port to connect. Needed for native USB
+  }
+  IrReceiver.begin(IR_RECEIVE_PIN, ENABLE_LED_FEEDBACK); // Start infrared decoding
 
   randomSeed(analogRead(0));
 
@@ -227,6 +288,7 @@ void loop() {
       showOLED("Enter Code");
 
       char digit = readIRDigit();
+      Serial.println(digit);
 
       if (digit >= '0' && digit <= '9') {
         enteredCode += digit;
@@ -298,4 +360,5 @@ void loop() {
       currentState = LOCKED;
       break;
   }
+  delay(100); // avoid too fast refresh
 }

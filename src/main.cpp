@@ -3,6 +3,7 @@
 #include <Adafruit_SSD1306.h>
 #include <SdFat.h>
 #include <IRremote.h>
+#include <Keyword_Detection_inferencing.h>   // <- rename to match your export
 
 SdFat SD;
 File32 myFile;

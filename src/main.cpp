@@ -2,6 +2,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <SdFat.h>
+#include <ESP_I2S.h>
 #include <IRremote.h>
 #include <Keyword_Detection_inferencing.h>   // <- rename to match your export
 
@@ -10,6 +11,11 @@ File32 myFile;
 String fileName = "file_log.txt";
 String UNLOCK_CODE_FILE = "unlock.txt";
 
+// DMA chunk size for each I2S read in the capture task
+#define CAPTURE_CHUNK   2048
+
+static I2SClass    i2s;
+static int16_t     capture_buf[CAPTURE_CHUNK];
 const int CORRECT_TONE = 500;
 const int INCORRECT_TONE = 1000;
 const int speakerPin = D3;
@@ -20,11 +26,29 @@ const int speakerPin = D3;
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
 // function declarations
+static bool i2s_init();
+static void audio_callback(uint32_t n_bytes);
+static int  get_audio_signal_data(size_t offset, size_t length, float *out_ptr);
+static bool inference_start(uint32_t n_samples);
+static void inference_end();
+static bool inference_record();
+static void capture_task(void *arg);
+static String runVoiceInference();
 void readSD();
 void showLockSymbol();
 void showUnlockSymbol();
 void playTone(int, int);
 void incorrect();
+
+static bool        record_status = false;
+
+/* ── Inference buffer ──────────────────────────────────────────────────── */
+typedef struct {
+    int16_t  *buffer;
+    uint8_t   buf_ready;
+    uint32_t  buf_count;
+    uint32_t  n_samples;
+} inference_t;
 
 /*void setup() {
   pinMode(speakerPin, OUTPUT);
@@ -243,9 +267,65 @@ char readIRDigit() {
   return '\0';
 }
 
-String runVoiceInference(float &confidence) {
+#define SAMPLE_RATE     EI_CLASSIFIER_FREQUENCY          // typically 16000 Hz
+#define SAMPLE_COUNT    EI_CLASSIFIER_RAW_SAMPLE_COUNT   // typically 16000 (1 s)
+static bool        debug_nn      = false;
+static inference_t inference;
+
+String runVoiceInference() {
   // replace with Edge Impulse inference result
-  confidence = 0.90;
+  int confidence = 0.90;
+
+  // from testcontinuous
+    signal_t signal;
+    signal.total_length = SAMPLE_COUNT;
+    signal.get_data     = &get_audio_signal_data;
+
+    ei_impulse_result_t result = {};
+
+    EI_IMPULSE_ERROR err = run_classifier(&signal, &result, debug_nn);
+    if (err != EI_IMPULSE_OK) {
+        Serial.printf("[ERROR] run_classifier() returned %d\n", err);
+        return "null";
+    }
+
+    /*Serial.printf("[INF] DSP: %d ms  | Inference: %d ms  | Anomaly: %d ms\n",
+                  result.timing.dsp,
+                  result.timing.classification,
+                  result.timing.anomaly);
+
+    Serial.println("-- Scores --------------------------------------");
+    for (uint16_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++) {
+        Serial.printf("  %-20s %.4f\n",
+                      result.classification[ix].label,
+                      result.classification[ix].value);
+    }*/
+
+#if EI_CLASSIFIER_HAS_ANOMALY == 1
+    Serial.printf("  anomaly score       %.4f\n", result.anomaly);
+#endif
+
+    float   best_val = 0.0f;
+    uint8_t best_idx = 0;
+    for (uint16_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++) {
+        if (result.classification[ix].value > best_val) {
+            best_val = result.classification[ix].value;
+            best_idx = ix;
+        }
+    }
+
+    bool is_yes = (best_val >= confidence) &&
+                  (strcmp(result.classification[best_idx].label, "yes") == 0);
+
+    if (best_val >= confidence) {
+        Serial.printf(">>> DETECTED: %s (%.1f%%)\n",
+                      result.classification[best_idx].label,
+                      best_val * 100.0f);
+    } else {
+        Serial.printf(">>> No confident detection (best: %s @ %.1f%%)\n",
+                      result.classification[best_idx].label,
+                      best_val * 100.0f);
+    }
 
   // example only:
   return "blue";
@@ -262,7 +342,18 @@ void setup() {
   {
       delay(10); // wait for serial port to connect. Needed for native USB
   }
+  if (!i2s_init()) {
+      Serial.println("[FATAL] PDM init failed — halting.");
+      while (true) delay(1000);
+  }
+
   IrReceiver.begin(IR_RECEIVE_PIN, ENABLE_LED_FEEDBACK); // Start infrared decoding
+
+    if (!inference_start(EI_CLASSIFIER_RAW_SAMPLE_COUNT)) {
+        Serial.printf("[FATAL] Could not allocate audio buffer (size %d) — halting.\n",
+                      EI_CLASSIFIER_RAW_SAMPLE_COUNT);
+        while (true) delay(1000);
+    }
 
   randomSeed(analogRead(0));
 
@@ -327,7 +418,7 @@ void loop() {
       showOLED("Speak now");
 
       float confidence = 0.0;
-      String recognizedWord = runVoiceInference(confidence);
+      String recognizedWord = runVoiceInference();
 
       recognizedWord.toLowerCase();
 
@@ -361,4 +452,117 @@ void loop() {
       break;
   }
   delay(100); // avoid too fast refresh
+}
+
+// helper functions from Test Continuous
+static int get_audio_signal_data(size_t offset, size_t length, float *out_ptr)
+{
+    numpy::int16_to_float(inference.buffer + offset, out_ptr, length);
+    return EIDSP_OK;
+}
+
+/* ── Allocate inference buffer and launch the capture task ─────────────── */
+static bool inference_start(uint32_t n_samples)
+{
+    inference.buffer = (int16_t *)malloc(n_samples * sizeof(int16_t));
+    if (!inference.buffer) return false;
+
+    inference.buf_count = 0;
+    inference.n_samples = n_samples;
+    inference.buf_ready = 0;
+
+    ei_sleep(100);
+    record_status = true;
+
+    xTaskCreate(capture_task, "CaptureTask", 1024 * 32, (void *)CAPTURE_CHUNK, 10, NULL);
+
+    return true;
+}
+/* ── Block until a full inference window is ready ──────────────────────── */
+static bool inference_record()
+{
+    while (inference.buf_ready == 0) delay(10);
+    inference.buf_ready = 0;
+    return true;
+}
+
+/* ── Stop the capture task and free the inference buffer ───────────────── */
+static void inference_end()
+{
+    record_status = false;
+    ei_free(inference.buffer);
+}
+
+/* ── FreeRTOS task: continuously reads I2S and feeds the inference buffer ─ */
+static void capture_task(void *arg)
+{
+    const int32_t bytes_to_read = (uint32_t)arg;
+
+    while (record_status) {
+        size_t got = i2s.readBytes((char *)capture_buf, bytes_to_read);
+
+        if (got <= 0) {
+            Serial.printf("[ERROR] i2s.readBytes() returned %d\n", got);
+        } else {
+            if (got < (size_t)bytes_to_read)
+                Serial.println("[WARN] Partial I2S read");
+
+            // Scale up to compensate for the mic's low output level
+            for (int x = 0; x < bytes_to_read / 2; x++)
+                capture_buf[x] = (int16_t)(capture_buf[x]) * 8;
+
+            if (record_status)
+                audio_callback(bytes_to_read);
+        }
+    }
+
+    vTaskDelete(NULL);
+}
+
+/* ── Fill inference buffer one DMA chunk at a time ─────────────────────── */
+static void audio_callback(uint32_t n_bytes)
+{
+    for (uint32_t i = 0; i < n_bytes >> 1; i++) {
+        inference.buffer[inference.buf_count++] = capture_buf[i];
+
+        if (inference.buf_count >= inference.n_samples) {
+            inference.buf_count = 0;
+            inference.buf_ready = 1;
+        }
+    }
+}
+
+
+/* ── PDM initialisation ────────────────────────────────────────────────── */
+#define PDM_CLK_PIN     42   // GPIO 42 → MSM261D3526H1CPM CLK
+#define PDM_DATA_PIN    41   // GPIO 41 → MSM261D3526H1CPM DATA
+#define WARMUP_MS       30
+static bool i2s_init()
+{
+    // Dedicated PDM RX pin setter — no BCLK, WS, or MCLK needed for PDM
+    i2s.setPinsPdmRx(PDM_CLK_PIN, PDM_DATA_PIN);
+
+    // I2S_MODE_PDM_RX  : PDM receive path with hardware decimation to PCM
+    // 16-bit width     : only supported width for PDM RX
+    // MONO             : single onboard mic; L/R is fixed to GND on the PCB
+    bool ok = i2s.begin(I2S_MODE_PDM_RX,
+                        SAMPLE_RATE,
+                        I2S_DATA_BIT_WIDTH_16BIT,
+                        I2S_SLOT_MODE_MONO);
+
+    if (!ok) {
+        Serial.println("[ERROR] i2s.begin(I2S_MODE_PDM_RX) failed.");
+        return false;
+    }
+
+    // Discard the first WARMUP_MS of samples to clear the MSM261's power-up
+    // transient before any inference recording starts.
+    const size_t warmup_samples = (size_t)(SAMPLE_RATE * WARMUP_MS / 1000);
+    char *discard = (char *)malloc(warmup_samples * sizeof(int16_t));
+    if (discard) {
+        i2s.readBytes(discard, warmup_samples * sizeof(int16_t));
+        free(discard);
+    }
+
+    return true;
 }

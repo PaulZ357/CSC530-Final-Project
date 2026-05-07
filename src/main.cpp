@@ -9,6 +9,10 @@ File32 myFile;
 String fileName = "file_log.txt";
 String UNLOCK_CODE_FILE = "unlock.txt";
 
+const int CORRECT_TONE = 500;
+const int INCORRECT_TONE = 1000;
+const int speakerPin = D3;
+
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 
@@ -18,17 +22,37 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 void readSD();
 void showLockSymbol();
 void showUnlockSymbol();
+void playTone(int, int);
+void incorrect();
 
 void setup() {
+  pinMode(speakerPin, OUTPUT);
   readSD();
 }
 
 void loop() {
-  // this is just demonstration
+  // this is just demonstration of lock and unlock as well as buzzer
   showLockSymbol();
+  incorrect();
   delay(1000);
   showUnlockSymbol();
   delay(1000);
+}
+
+void playTone(int tone, int duration) {
+  for (long i = 0; i < duration * 1000L; i += tone * 2) {
+    digitalWrite(speakerPin, HIGH);
+    delayMicroseconds(tone);
+    digitalWrite(speakerPin, LOW);
+    delayMicroseconds(tone);
+  }
+}
+
+void incorrect() {
+  playTone(INCORRECT_TONE, 100);
+  delay(100);
+  playTone(INCORRECT_TONE, 100);
+  delay(100);
 }
 
 void showLockSymbol() {
@@ -78,6 +102,8 @@ void showUnlockSymbol() {
   display.fillRect(50 + 28, 30, 28, 20, SSD1306_BLACK);
 
   display.display();
+  
+  playTone(CORRECT_TONE, 1000);
 }
 
 void readSD() {

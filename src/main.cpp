@@ -150,3 +150,151 @@ void readSD() {
     }
     Serial.println("Done.");
 }
+
+#include <Arduino.h>
+
+enum State {
+  LOCKED,
+  CODE_ENTRY,
+  VOICE_ENTRY,
+  UNLOCKED
+};
+
+State currentState = LOCKED;
+
+String storedCode = "1234";   // Later read from SD card
+String enteredCode = "";
+
+bool codeCorrect = false;
+bool voiceCorrect = false;
+
+const char* passwordWords[] = {
+  "blue", "cyan", "green", "magenta", "red", "white", "yellow"
+};
+
+int passwordIndex = 0;
+String expectedWord = "";
+
+// ---------- PLACEHOLDER FUNCTIONS ----------
+
+void showOLED(String text) {
+  Serial.println(text);
+  // replace with OLED display code
+}
+
+char readIRDigit() {
+  // replace with your IR remote code
+  // return '0' to '9' when pressed
+  // return '\0' if nothing pressed
+  return '\0';
+}
+
+String runVoiceInference(float &confidence) {
+  // replace with Edge Impulse inference result
+  confidence = 0.90;
+
+  // example only:
+  return "blue";
+}
+
+// ---------- MAIN LOGIC ----------
+
+void setup() {
+  Serial.begin(115200);
+
+  randomSeed(analogRead(0));
+
+  currentState = LOCKED;
+  showOLED("LOCK");
+}
+
+void loop() {
+  switch (currentState) {
+
+    case LOCKED:
+      codeCorrect = false;
+      voiceCorrect = false;
+      enteredCode = "";
+
+      showOLED("LOCK");
+      delay(500);
+
+      currentState = CODE_ENTRY;
+      break;
+
+    case CODE_ENTRY: {
+      showOLED("Enter Code");
+
+      char digit = readIRDigit();
+
+      if (digit >= '0' && digit <= '9') {
+        enteredCode += digit;
+
+        showOLED("Code: " + enteredCode);
+
+        if (enteredCode.length() == 4) {
+          if (enteredCode == storedCode) {
+            codeCorrect = true;
+
+            passwordIndex = random(0, 7);
+            expectedWord = passwordWords[passwordIndex];
+
+            showOLED("Speak #" + String(passwordIndex + 1));
+
+            currentState = VOICE_ENTRY;
+          } 
+          else {
+            codeCorrect = false;
+            showOLED("ACCESS DENIED");
+            delay(1000);
+            currentState = LOCKED;
+          }
+        }
+      }
+
+      break;
+    }
+
+    case VOICE_ENTRY: {
+      if (codeCorrect == false) {
+        currentState = LOCKED;
+        break;
+      }
+
+      showOLED("Speak now");
+
+      float confidence = 0.0;
+      String recognizedWord = runVoiceInference(confidence);
+
+      recognizedWord.toLowerCase();
+
+      if (recognizedWord == expectedWord && confidence >= 0.80) {
+        voiceCorrect = true;
+      } 
+      else {
+        voiceCorrect = false;
+      }
+
+      if (codeCorrect && voiceCorrect) {
+        currentState = UNLOCKED;
+      } 
+      else {
+        showOLED("ACCESS DENIED");
+        delay(1000);
+        currentState = LOCKED;
+      }
+
+      break;
+    }
+
+    case UNLOCKED:
+      showOLED("UNLOCKED");
+
+      // buzzer success here if needed
+
+      delay(3000);
+
+      currentState = LOCKED;
+      break;
+  }
+}

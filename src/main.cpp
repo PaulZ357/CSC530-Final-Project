@@ -2,6 +2,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <SdFat.h>
+#include <IRremote.h>
 
 SdFat SD;
 File32 myFile;
@@ -15,9 +16,22 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, -1);
 
 // function declarations
 void readSD();
+void showLockSymbol();
+void showUnlockSymbol();
 
 void setup() {
   readSD();
+}
+
+void loop() {
+  // this is just demonstration
+  showLockSymbol();
+  delay(1000);
+  showUnlockSymbol();
+  delay(1000);
+}
+
+void showLockSymbol() {
   display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
   display.clearDisplay();
 
@@ -40,7 +54,30 @@ void setup() {
   display.display();
 }
 
-void loop() {
+void showUnlockSymbol() {
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+  display.clearDisplay();
+
+  // ---- UNLOCK ICON ----
+
+  // Lock body
+  display.fillRect(50, 30, 28, 20, SSD1306_WHITE);
+
+  // Lock shackle (top curve)
+  display.drawCircle(64 + 20, 25, 10, SSD1306_WHITE);
+
+  // Turn circle into U shape
+  display.fillRect(54 + 20, 26, 20, 4, SSD1306_WHITE);
+  display.fillRect(55 + 20, 26, 19, 4, SSD1306_BLACK);
+
+  // Optional keyhole
+  display.fillCircle(64, 38, 2, SSD1306_BLACK);
+  display.fillRect(63, 40, 3, 5, SSD1306_BLACK);
+
+  // UNLOCK part
+  display.fillRect(50 + 28, 30, 28, 20, SSD1306_BLACK);
+
+  display.display();
 }
 
 void readSD() {

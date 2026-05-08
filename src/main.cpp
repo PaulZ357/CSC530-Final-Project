@@ -56,15 +56,6 @@ typedef struct {
     uint32_t  n_samples;
 } inference_t;
 
-/*void loop() {
-  // this is just demonstration of lock and unlock as well as buzzer
-  showLockSymbol();
-  incorrect();
-  delay(1000);
-  showUnlockSymbol();
-  delay(1000);
-}*/
-
 void playTone(int tone, int duration) {
   for (long i = 0; i < duration * 1000L; i += tone * 2) {
     digitalWrite(speakerPin, HIGH);
@@ -105,7 +96,9 @@ void showLockSymbol() {
 }
 
 void showUnlockSymbol() {
-  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { 
+    for(;;); // Stop if error
+  }
   display.clearDisplay();
 
   // ---- UNLOCK ICON ----
@@ -206,16 +199,17 @@ String expectedWord = "";
 // ---------- PLACEHOLDER FUNCTIONS ----------
 
 void showOLED(String text) {
-  Serial.println(text);
-  // replace with OLED display code
 
-  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
+  if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { 
+    for(;;); // Stop if error
+  }
   display.clearDisplay(); // Clear buffer
   
   display.setTextSize(1);      // Normal 1:1 pixel scale
   display.setTextColor(WHITE); // Draw white text
   display.setCursor(0,0);      // Start at top-left corner
   display.println(text);
+  display.display(); // Needed to push to screen
 }
 
 char readIRDigit() {
@@ -299,18 +293,6 @@ String runVoiceInference() {
       Serial.printf("[ERROR] run_classifier() returned %d\n", err);
       return "null";
   }
-
-  /*Serial.printf("[INF] DSP: %d ms  | Inference: %d ms  | Anomaly: %d ms\n",
-    result.timing.dsp,
-    result.timing.classification,
-    result.timing.anomaly);
-
-  Serial.println("-- Scores --------------------------------------");
-  for (uint16_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++) {
-    Serial.printf("  %-20s %.4f\n",
-      result.classification[ix].label,
-      result.classification[ix].value);
-  }*/
 
   #if EI_CLASSIFIER_HAS_ANOMALY == 1
       Serial.printf("  anomaly score       %.4f\n", result.anomaly);
@@ -406,9 +388,6 @@ void loop() {
 
       if (digit >= '0' && digit <= '9') {
         enteredCode += digit;
-
-        showOLED("Code: " + enteredCode);
-
         if (enteredCode.length() == 4) {
           if (enteredCode == storedCode) {
             codeCorrect = true;
@@ -448,7 +427,7 @@ void loop() {
         break;
       }
 
-      showOLED("Speak now");
+      showOLED("Speak #" + String(passwordIndex + 1));
 
       String recognizedWord = runVoiceInference();
 

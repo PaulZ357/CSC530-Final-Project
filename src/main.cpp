@@ -45,6 +45,7 @@ void resetUnlockFile();
 void realTimeClock();
 void incorrect();
 
+String storedCode;   // Later read from SD card
 static bool        record_status = false;
 
 /* ── Inference buffer ──────────────────────────────────────────────────── */
@@ -154,15 +155,20 @@ void readSD() {
 
     // read SD
 
-    myFile = SD.open(UNLOCK_CODE_FILE);
+    myFile = SD.open(fileName);
+    storedCode = "1234";
     if (myFile)
     {
-        Serial.println(UNLOCK_CODE_FILE+":");
+        Serial.println(fileName+":");
 
         // read from the file until there's nothing else in it:
         while (myFile.available())
         {
-            storedCode = myFile.read();
+          const int code = myFile.read();
+          Serial.println(code);
+          String codeString = String(code);
+          Serial.println(codeString);
+          storedCode = codeString;
         }
 
         // close the file:
@@ -185,7 +191,6 @@ enum State {
 
 State currentState = LOCKED;
 
-String storedCode = "1234";   // Later read from SD card
 String enteredCode = "";
 
 bool codeCorrect = false;
@@ -204,6 +209,7 @@ void showOLED(String text) {
   Serial.println(text);
   // replace with OLED display code
 
+  display.begin(SSD1306_SWITCHCAPVCC, 0x3C);
   display.clearDisplay(); // Clear buffer
   
   display.setTextSize(1);      // Normal 1:1 pixel scale

@@ -24,8 +24,7 @@
 
 #include "edge-impulse-sdk/tensorflow/lite/micro/kernels/micro_ops.h"
 
-#define EI_TFLITE_RESOLVER static tflite::MicroMutableOpResolver<8> resolver; \
-    resolver.AddAdd(); \
+#define EI_TFLITE_RESOLVER static tflite::MicroMutableOpResolver<7> resolver; \
     resolver.AddConv2D(); \
     resolver.AddDepthwiseConv2D(); \
     resolver.AddFullyConnected(); \

@@ -147,7 +147,7 @@ const ei_impulse_t impulse_968259_2 = {
     .project_name = "Keyword Detection",
     .impulse_id = 2,
     .impulse_name = "Impulse #2",
-    .deploy_version = 1,
+    .deploy_version = 3,
 
     .nn_input_frame_size = 3960,
     .raw_sample_count = 16000,

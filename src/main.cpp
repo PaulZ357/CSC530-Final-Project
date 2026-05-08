@@ -137,7 +137,7 @@ void readSD() {
     Serial.println("Initializing");
     while (!Serial.available())
     {
-        delay(10); // wait for serial port to connect. Needed for native USB
+      delay(10); // wait for serial port to connect. Needed for native USB
     }
     Serial.read(); // clear the initial input buffer
     Serial.println("Initialized");
@@ -148,8 +148,8 @@ void readSD() {
 
     if (!SD.begin(SD_CS_PIN))
     {
-        Serial.println("initialization failed!");
-        return;
+      Serial.println("initialization failed!");
+      return;
     }
     Serial.println("initialization done.");
 
@@ -159,25 +159,25 @@ void readSD() {
     storedCode = "1234";
     if (myFile)
     {
-        Serial.println(fileName+":");
+      Serial.println(fileName+":");
 
-        // read from the file until there's nothing else in it:
-        while (myFile.available())
-        {
-          const int code = myFile.read();
-          Serial.println(code);
-          String codeString = String(code);
-          Serial.println(codeString);
-          storedCode = codeString;
-        }
+      // read from the file until there's nothing else in it:
+      while (myFile.available())
+      {
+        const int code = myFile.read();
+        Serial.println(code);
+        String codeString = String(code);
+        Serial.println(codeString);
+        storedCode = codeString;
+      }
 
-        // close the file:
-        myFile.close();
+      // close the file:
+      myFile.close();
     }
     else
     {
-        // if the file didn't open, print an error:
-        Serial.println("error opening test.txt");
+      // if the file didn't open, print an error:
+      Serial.println("error opening test.txt");
     }
     Serial.println("Done.");
 }
@@ -223,57 +223,57 @@ char readIRDigit() {
   // return '0' to '9' when pressed
   // return '\0' if nothing pressed
   if (IrReceiver.decode()) {
-      uint32_t code = IrReceiver.decodedIRData.decodedRawData;
-      Serial.print("Code: ");
-      Serial.println(code, HEX);
-      // Example mapping for common remotes
-      int pressedDigit;
-      switch(code) {
-          case 0xE916FF00:
-              Serial.println("0 pressed");
-              pressedDigit = '0';
-              break;
-          case 0xF30CFF00:
-              Serial.println("1 pressed");
-              pressedDigit = '1';
-              break;
-          case 0xE718FF00:
-              Serial.println("2 pressed");
-              pressedDigit = '2';
-              break;
-          case 0xA15EFF00:
-              Serial.println("3 pressed");
-              pressedDigit = '3';
-              break;
-          case 0xF708FF00:
-              Serial.println("4 pressed");
-              pressedDigit = '4';
-              break;
-          case 0xE31CFF00:
-              Serial.println("5 pressed");
-              pressedDigit = '5';
-              break;
-          case 0xA55AFF00:
-              Serial.println("6 pressed");
-              pressedDigit = '6';
-              break;
-          case 0xBD42FF00:
-              Serial.println("7 pressed");
-              pressedDigit = '7';
-              break;
-          case 0xAD52FF00:
-              Serial.println("8 pressed");
-              pressedDigit = '8';
-              break;
-          case 0xB54AFF00:
-              Serial.println("9 pressed");
-              pressedDigit = '9';
-              break;
-          default:
-              pressedDigit = '\0';
-      }
-      IrReceiver.resume();
-      return pressedDigit;
+    uint32_t code = IrReceiver.decodedIRData.decodedRawData;
+    Serial.print("Code: ");
+    Serial.println(code, HEX);
+    // Example mapping for common remotes
+    int pressedDigit;
+    switch(code) {
+      case 0xE916FF00:
+        Serial.println("0 pressed");
+        pressedDigit = '0';
+        break;
+      case 0xF30CFF00:
+        Serial.println("1 pressed");
+        pressedDigit = '1';
+        break;
+      case 0xE718FF00:
+        Serial.println("2 pressed");
+        pressedDigit = '2';
+        break;
+      case 0xA15EFF00:
+        Serial.println("3 pressed");
+        pressedDigit = '3';
+        break;
+      case 0xF708FF00:
+        Serial.println("4 pressed");
+        pressedDigit = '4';
+        break;
+      case 0xE31CFF00:
+        Serial.println("5 pressed");
+        pressedDigit = '5';
+        break;
+      case 0xA55AFF00:
+        Serial.println("6 pressed");
+        pressedDigit = '6';
+        break;
+      case 0xBD42FF00:
+        Serial.println("7 pressed");
+        pressedDigit = '7';
+        break;
+      case 0xAD52FF00:
+        Serial.println("8 pressed");
+        pressedDigit = '8';
+        break;
+      case 0xB54AFF00:
+        Serial.println("9 pressed");
+        pressedDigit = '9';
+        break;
+      default:
+        pressedDigit = '\0';
+    }
+    IrReceiver.resume();
+    return pressedDigit;
   }
   return '\0';
 }
@@ -301,15 +301,15 @@ String runVoiceInference() {
   }
 
   /*Serial.printf("[INF] DSP: %d ms  | Inference: %d ms  | Anomaly: %d ms\n",
-                result.timing.dsp,
-                result.timing.classification,
-                result.timing.anomaly);
+    result.timing.dsp,
+    result.timing.classification,
+    result.timing.anomaly);
 
   Serial.println("-- Scores --------------------------------------");
   for (uint16_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++) {
-      Serial.printf("  %-20s %.4f\n",
-                    result.classification[ix].label,
-                    result.classification[ix].value);
+    Serial.printf("  %-20s %.4f\n",
+      result.classification[ix].label,
+      result.classification[ix].value);
   }*/
 
   #if EI_CLASSIFIER_HAS_ANOMALY == 1

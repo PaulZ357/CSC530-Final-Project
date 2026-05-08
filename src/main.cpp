@@ -162,7 +162,7 @@ void readSD() {
         // read from the file until there's nothing else in it:
         while (myFile.available())
         {
-            Serial.write(myFile.read());
+            storedCode = myFile.read();
         }
 
         // close the file:
@@ -203,6 +203,13 @@ String expectedWord = "";
 void showOLED(String text) {
   Serial.println(text);
   // replace with OLED display code
+
+  display.clearDisplay(); // Clear buffer
+  
+  display.setTextSize(1);      // Normal 1:1 pixel scale
+  display.setTextColor(WHITE); // Draw white text
+  display.setCursor(0,0);      // Start at top-left corner
+  display.println(text);
 }
 
 char readIRDigit() {

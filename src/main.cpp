@@ -5,6 +5,8 @@
 #include <ESP_I2S.h>
 #include <IRremote.h>
 #include <Keyword_Detection_inferencing.h>   // <- rename to match your export
+#include "RTClib.h"
+#include <Arduino.h>
 
 SdFat SD;
 File32 myFile;
@@ -38,6 +40,9 @@ void readSD();
 void showLockSymbol();
 void showUnlockSymbol();
 void playTone(int, int);
+void log(String, String, String);
+void resetUnlockFile();
+void realTimeClock();
 void incorrect();
 
 static bool        record_status = false;
@@ -170,8 +175,6 @@ void readSD() {
     }
     Serial.println("Done.");
 }
-
-#include <Arduino.h>
 
 enum State {
   LOCKED,
@@ -361,6 +364,8 @@ void setup() {
 
   pinMode(speakerPin, OUTPUT);
   readSD();
+  resetUnlockFile();
+  realTimeClock();
   
   currentState = LOCKED;
   showOLED("LOCK");
@@ -401,6 +406,9 @@ void loop() {
             showOLED("Speak #" + String(passwordIndex + 1));
 
             currentState = VOICE_ENTRY;
+            
+            log("CODE","PASS",enteredCode);
+
           } 
           else {
             codeCorrect = false;
@@ -411,6 +419,8 @@ void loop() {
             // buzz for incorrect
             showLockSymbol();
             incorrect();
+
+            log("CODE","FAIL",enteredCode);
 
           }
         }
@@ -450,6 +460,7 @@ void loop() {
         showUnlockSymbol();
 
         // log 
+        log("VOICE","PASS",recognizedWord);
       } 
       else {
         showOLED("ACCESS DENIED. "+recognizedWord+" x "+expectedWord);
@@ -462,6 +473,7 @@ void loop() {
         incorrect();
 
         // log 
+        log("VOICE","FAIL",recognizedWord);
       }
 
       break;
@@ -478,6 +490,45 @@ void loop() {
       break;
   }
   delay(100); // avoid too fast refresh
+}
+
+const char* formattedString = "%02d:%02d:%02d:%02d:%02d:%02d,%d\n";
+int elapsed;
+DateTime previous;
+RTC_PCF8563 rtc;
+
+void log(String stage, String result, String detail) {
+  const DateTime current = rtc.now();
+
+  const int year = current.year() % 100;
+  const int month = current.month();
+  const int day = current.day();
+  const int hour = current.hour();
+  const int minute = current.minute();
+  const int second = current.second();
+  const int total = current.unixtime() - previous.unixtime();
+
+  elapsed = total;
+
+  myFile = SD.open(UNLOCK_CODE_FILE, FILE_WRITE);
+  if (myFile) {
+    myFile.printf(formattedString, year, month, day, hour, minute, second, stage, result, detail);
+    // close the file:
+    myFile.close();
+    Serial.println("done.");
+  } else {
+    // if the file didn't open, print an error:
+    Serial.println("error opening "+UNLOCK_CODE_FILE);
+  }
+}
+
+void resetUnlockFile() {
+  
+  myFile = SD.open(UNLOCK_CODE_FILE, FILE_WRITE);
+  myFile.seek(0); // Move to the beginning of the file
+  myFile.truncate(); // Remove all contents
+  myFile.close();
+
 }
 
 // helper functions from Test Continuous
@@ -592,3 +643,20 @@ static bool i2s_init()
 
     return true;
 }
+
+ void realTimeClock() {
+  
+  if (! rtc.begin()) {
+    Serial.println("Couldn't find RTC");
+    Serial.flush();
+    while (1) delay(10);
+  }
+
+  if (rtc.lostPower()) {
+    Serial.println("RTC is NOT initialized, let's set the time!");
+    rtc.adjust(DateTime(2026, 3, 8, 0, 7, 0));
+  }
+
+  rtc.start();
+
+ }

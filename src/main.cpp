@@ -9,7 +9,7 @@
 SdFat SD;
 File32 myFile;
 String fileName = "file_log.txt";
-String UNLOCK_CODE_FILE = "unlock.txt";
+String UNLOCK_CODE_FILE = "unlock_log.txt";
 
 // DMA chunk size for each I2S read in the capture task
 #define CAPTURE_CHUNK   2048
@@ -50,12 +50,7 @@ typedef struct {
     uint32_t  n_samples;
 } inference_t;
 
-/*void setup() {
-  pinMode(speakerPin, OUTPUT);
-  readSD();
-}
-
-void loop() {
+/*void loop() {
   // this is just demonstration of lock and unlock as well as buzzer
   showLockSymbol();
   incorrect();
@@ -277,58 +272,65 @@ String runVoiceInference() {
   int confidence = 0.90;
 
   // from testcontinuous
-    signal_t signal;
-    signal.total_length = SAMPLE_COUNT;
-    signal.get_data     = &get_audio_signal_data;
+  signal_t signal;
+  signal.total_length = SAMPLE_COUNT;
+  signal.get_data     = &get_audio_signal_data;
 
-    ei_impulse_result_t result = {};
+  ei_impulse_result_t result = {};
 
-    EI_IMPULSE_ERROR err = run_classifier(&signal, &result, debug_nn);
-    if (err != EI_IMPULSE_OK) {
-        Serial.printf("[ERROR] run_classifier() returned %d\n", err);
-        return "null";
+  EI_IMPULSE_ERROR err = run_classifier(&signal, &result, debug_nn);
+  if (err != EI_IMPULSE_OK) {
+      Serial.printf("[ERROR] run_classifier() returned %d\n", err);
+      return "null";
+  }
+
+  /*Serial.printf("[INF] DSP: %d ms  | Inference: %d ms  | Anomaly: %d ms\n",
+                result.timing.dsp,
+                result.timing.classification,
+                result.timing.anomaly);
+
+  Serial.println("-- Scores --------------------------------------");
+  for (uint16_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++) {
+      Serial.printf("  %-20s %.4f\n",
+                    result.classification[ix].label,
+                    result.classification[ix].value);
+  }*/
+
+  #if EI_CLASSIFIER_HAS_ANOMALY == 1
+      Serial.printf("  anomaly score       %.4f\n", result.anomaly);
+  #endif
+
+  float   best_val = 0.0f;
+  uint8_t best_idx = 0;
+  for (uint16_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++) {
+      if (result.classification[ix].value > best_val) {
+          best_val = result.classification[ix].value;
+          best_idx = ix;
+      }
+  }
+
+  if (best_val >= confidence) {
+    String label = result.classification[best_idx].label;
+    Serial.printf(">>> DETECTED: %s (%.1f%%)\n",
+      label,
+      best_val * 100.0f);
+    for (int i = 0; i < 7; i++) {
+      String password = passwordWords[i];
+      password.toLowerCase();
+      label.toLowerCase();
+      if (label == password) {
+        Serial.println(label);
+        return label;
+      }
     }
-
-    /*Serial.printf("[INF] DSP: %d ms  | Inference: %d ms  | Anomaly: %d ms\n",
-                  result.timing.dsp,
-                  result.timing.classification,
-                  result.timing.anomaly);
-
-    Serial.println("-- Scores --------------------------------------");
-    for (uint16_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++) {
-        Serial.printf("  %-20s %.4f\n",
-                      result.classification[ix].label,
-                      result.classification[ix].value);
-    }*/
-
-#if EI_CLASSIFIER_HAS_ANOMALY == 1
-    Serial.printf("  anomaly score       %.4f\n", result.anomaly);
-#endif
-
-    float   best_val = 0.0f;
-    uint8_t best_idx = 0;
-    for (uint16_t ix = 0; ix < EI_CLASSIFIER_LABEL_COUNT; ix++) {
-        if (result.classification[ix].value > best_val) {
-            best_val = result.classification[ix].value;
-            best_idx = ix;
-        }
-    }
-
-    bool is_yes = (best_val >= confidence) &&
-                  (strcmp(result.classification[best_idx].label, "yes") == 0);
-
-    if (best_val >= confidence) {
-        Serial.printf(">>> DETECTED: %s (%.1f%%)\n",
-                      result.classification[best_idx].label,
-                      best_val * 100.0f);
-    } else {
-        Serial.printf(">>> No confident detection (best: %s @ %.1f%%)\n",
-                      result.classification[best_idx].label,
-                      best_val * 100.0f);
-    }
+  } else {
+    Serial.printf(">>> No confident detection (best: %s @ %.1f%%)\n",
+      result.classification[best_idx].label,
+      best_val * 100.0f);
+  }
 
   // example only:
-  return "blue";
+  return "null";
 }
 
 // ---------- MAIN LOGIC ----------
@@ -357,6 +359,9 @@ void setup() {
 
   randomSeed(analogRead(0));
 
+  pinMode(speakerPin, OUTPUT);
+  readSD();
+  
   currentState = LOCKED;
   showOLED("LOCK");
 }
@@ -402,6 +407,11 @@ void loop() {
             showOLED("ACCESS DENIED");
             delay(1000);
             currentState = LOCKED;
+                
+            // buzz for incorrect
+            showLockSymbol();
+            incorrect();
+
           }
         }
       }
@@ -417,12 +427,16 @@ void loop() {
 
       showOLED("Speak now");
 
-      float confidence = 0.0;
       String recognizedWord = runVoiceInference();
 
       recognizedWord.toLowerCase();
 
-      if (recognizedWord == expectedWord && confidence >= 0.80) {
+      while (recognizedWord == "null") {
+        recognizedWord = runVoiceInference();
+        recognizedWord.toLowerCase();
+      }
+
+      if (recognizedWord == expectedWord) {
         voiceCorrect = true;
       } 
       else {
@@ -431,11 +445,23 @@ void loop() {
 
       if (codeCorrect && voiceCorrect) {
         currentState = UNLOCKED;
+
+        // buzz for correct
+        showUnlockSymbol();
+
+        // log 
       } 
       else {
-        showOLED("ACCESS DENIED");
+        showOLED("ACCESS DENIED. "+recognizedWord+" x "+expectedWord);
+
         delay(1000);
         currentState = LOCKED;
+        
+        // buzz for incorrect
+        showLockSymbol();
+        incorrect();
+
+        // log 
       }
 
       break;
